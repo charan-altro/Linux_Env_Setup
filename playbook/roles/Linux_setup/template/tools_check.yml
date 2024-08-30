@@ -1,0 +1,87 @@
+---
+- name: Ensure Java, Maven, and Tomcat are installed on Kali Linux VMs
+  hosts: local  # Change this to match your inventory group name
+  become: yes
+  tasks:
+    - name: Update the apt cache
+      apt:
+        update_cache: yes
+
+    - name: Check if Java is installed
+      command: java -version
+      ignore_errors: yes
+      register: java_version_output
+      changed_when: false
+
+    - name: Display installed Java version
+      debug:
+        msg: "{{ java_version_output.stderr_lines }}"
+      when: java_version_output.rc == 0
+
+    - name: Install Java if not installed
+      apt:
+        name: openjdk-11-jdk  # Update the Java package name for Kali
+        state: present
+      when: java_version_output.rc != 0
+
+    - name: Install Maven
+      apt:
+        name: maven
+        state: present
+      ignore_errors: yes  # In case Maven is not available in the repo
+
+    - name: Install Maven manually if not available in apt
+      block:
+        - name: Download Maven binary
+          get_url:
+            url: https://dlcdn.apache.org/maven/maven-3/3.9.8/binaries/apache-maven-3.9.8-bin.tar.gz
+            dest: /tmp/apache-maven-3.9.8-bin.tar.gz
+
+        - name: Extract Maven
+          unarchive:
+            src: /tmp/apache-maven-3.9.8-bin.tar.gz
+            dest: /opt/
+            remote_src: yes
+
+        - name: Create symbolic link for Maven
+          file:
+            src: /opt/apache-maven-3.9.8
+            dest: /opt/maven
+            state: link
+
+        - name: Add Maven to path
+          lineinfile:
+            path: /etc/profile.d/maven.sh
+            line: 'export PATH=$PATH:/opt/maven/bin'
+            create: yes
+      when: maven_install_failed is defined and maven_install_failed
+
+    - name: Create Tomcat directory
+      file:
+        path: /opt/tomcat
+        state: directory
+        mode: '0755'
+
+    - name: Download and extract Tomcat
+      unarchive:
+        src: https://dlcdn.apache.org/tomcat/tomcat-9/v9.0.93/bin/apache-tomcat-9.0.93.tar.gz
+        dest: /opt/tomcat
+        remote_src: yes
+        creates: /opt/tomcat/apache-tomcat-9.0.93
+
+    - name: Create symbolic link for Tomcat
+      file:
+        src: /opt/tomcat/apache-tomcat-9.0.93
+        dest: /opt/tomcat/latest
+        state: link
+
+    - name: Ensure Tomcat service script is executable
+      file:
+        path: /opt/tomcat/latest/bin/startup.sh
+        mode: '0755'
+        state: file
+
+    - name: Start Tomcat server
+      shell: /opt/tomcat/latest/bin/startup.sh
+      args:
+        executable: /bin/bash

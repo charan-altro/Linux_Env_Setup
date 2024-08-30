@@ -1,0 +1,16 @@
+---
+- name: Install Git on AWS Linux VMs
+  hosts: azure_vms  # Change this to match your inventory group name if different
+  become: yes
+  tasks:
+    - name: Update the yum cache
+      yum:
+        name: '*'
+        state: latest
+        update_cache: yes
+
+    - name: Install Git
+      yum:
+        name: git
+        state: present
+

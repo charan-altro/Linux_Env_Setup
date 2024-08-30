@@ -1,0 +1,59 @@
+---
+- name: Build and deploy Java web application
+  hosts: azure_vms  # Change this to match your inventory group name if different
+  become: yes
+  vars:
+    tomcat_dir: /opt/tomcat/webapps  # Adjust the path to your Tomcat webapps directory
+    war_name: petclinic.war  # Name of the WAR file to be deployed
+    repo_url: https://github.com/spring-projects/spring-petclinic.git  # URL of the test project
+    app_dir: /opt/app/petclinic  # Directory where the application will be cloned and built
+
+  tasks:
+    - name: Create the application directory
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Clone the Java web application repository
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ app_dir }}"
+        version: HEAD
+
+    - name: Pause for a few seconds after cloning the repository
+      pause:
+        seconds: 10
+
+    - name: Build the Java web application with Maven
+      shell: mvn clean package -T1C | tee /tmp/maven_build.log
+      args:
+        chdir: "{{ app_dir }}"
+      register: build_output
+      # Avoid excessive logging
+      no_log: True  # Suppresses detailed task output to conserve disk and memory usage
+
+    - name: Pause for a few seconds after the build
+      pause:
+        seconds: 10
+
+    - name: Copy the WAR file to the Tomcat webapps directory
+      copy:
+        src: "{{ app_dir }}/target/{{ war_name }}"
+        dest: "{{ tomcat_dir }}/{{ war_name }}"
+        remote_src: yes
+
+    - name: Stop Tomcat
+      systemd:
+        name: tomcat
+        state: stopped
+
+    - name: Pause for a few seconds before starting Tomcat
+      pause:
+        seconds: 10
+
+    - name: Start Tomcat
+      systemd:
+        name: tomcat
+        state: started
+

@@ -1,0 +1,98 @@
+---
+- name: Configure all AWS Linux VMs
+  hosts: azure_vms  # Change this to match your inventory group name if different
+  become: yes
+  tasks:
+    - name: Update the yum cache
+      yum:
+        name: '*'
+        state: latest
+        update_cache: yes
+
+    - name: Install Java (required for Tomcat)
+      yum:
+        name: java-17-amazon-corretto
+        state: present
+
+    - name: Clean up existing Tomcat installation in /tmp
+      file:
+        path: /tmp/apache-tomcat-9.0.93
+        state: absent
+
+    - name: Download Apache Tomcat
+      get_url:
+        url: "https://dlcdn.apache.org/tomcat/tomcat-9/v9.0.93/bin/apache-tomcat-9.0.93.tar.gz"
+        dest: /tmp/apache-tomcat-9.0.93.tar.gz
+
+    - name: Create Tomcat installation directory
+      file:
+        path: /opt/tomcat
+        state: directory
+        mode: '0755'
+
+    - name: Extract Tomcat archive to /opt/tomcat
+      unarchive:
+        src: /tmp/apache-tomcat-9.0.93.tar.gz
+        dest: /opt/tomcat
+        remote_src: yes
+        extra_opts:
+          - --strip-components=1
+
+    - name: Ensure Tomcat user and group exist
+      user:
+        name: tomcat
+        state: present
+
+    - name: Set permissions for Tomcat directory
+      file:
+        path: /opt/tomcat
+        state: directory
+        owner: tomcat
+        group: tomcat
+        recurse: yes
+
+    - name: Create a symbolic link for Tomcat
+      file:
+        src: /opt/tomcat
+        dest: /usr/local/tomcat
+        state: link
+
+    - name: Enable Tomcat as a service
+      copy:
+        content: |
+          [Unit]
+          Description=Apache Tomcat Web Application Container
+          After=network.target
+
+          [Service]
+          Type=forking
+          Environment=JAVA_HOME=/usr/lib/jvm/java-17-amazon-corretto
+          Environment=CATALINA_PID=/opt/tomcat/temp/tomcat.pid
+          Environment=CATALINA_HOME=/opt/tomcat
+          Environment=CATALINA_BASE=/opt/tomcat
+          Environment='CATALINA_OPTS=-Xms512M -Xmx1024M -server -XX:+UseParallelGC'
+          Environment='JAVA_OPTS=-Djava.awt.headless=true -Djava.security.egd=file:/dev/./urandom'
+
+          ExecStart=/opt/tomcat/bin/startup.sh
+          ExecStop=/opt/tomcat/bin/shutdown.sh
+
+          User=tomcat
+          Group=tomcat
+          UMask=0007
+          RestartSec=10
+          Restart=on-failure
+
+          [Install]
+          WantedBy=multi-user.target
+        dest: /etc/systemd/system/tomcat.service
+
+    - name: Reload systemd daemon to apply the Tomcat service
+      systemd:
+        daemon_reload: yes
+
+    - name: Start Tomcat service
+      systemd:
+        name: tomcat
+        state: started
+        enabled: yes
+

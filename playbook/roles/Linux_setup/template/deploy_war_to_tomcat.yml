@@ -1,0 +1,58 @@
+---
+- name: Deploy Java web application to Tomcat
+  hosts: azure_vms  # Change this to match your inventory group name if different
+  become: yes
+  vars:
+    tomcat_dir: /opt/tomcat/webapps  # Adjust the path to your Tomcat webapps directory
+    war_name: Spring_web_test.war  # Name of the WAR file to be deployed
+    build_dir_path: "{{ hostvars[inventory_hostname]['build_dir_path'] | default('/opt/app/Spring_web_test/Spring_web_test/target') }}"  # Path where the WAR file is built
+
+  tasks:
+    - name: Find the WAR file
+      find:
+        paths: "{{ build_dir_path }}"
+        patterns: "*.war"
+      register: found_files
+
+    - name: Fail if no WAR file found
+      fail:
+        msg: "WAR file not found."
+      when: found_files.matched == 0
+
+    - name: Remove all older files from Tomcat webapps directory
+      file:
+        path: "{{ tomcat_dir }}"
+        state: absent
+      notify:
+        - Create webapps directory
+
+    - name: Create the webapps directory
+      file:
+        path: "{{ tomcat_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Copy the WAR file to the Tomcat webapps directory
+      copy:
+        src: "{{ item.path }}"
+        dest: "{{ tomcat_dir }}/{{ war_name }}"
+        remote_src: yes
+      with_items: "{{ found_files.files }}"
+
+    - name: Stop Tomcat
+      systemd:
+        name: tomcat
+        state: stopped
+
+    - name: Start Tomcat
+      systemd:
+        name: tomcat
+        state: started
+
+  handlers:
+    - name: Create webapps directory
+      file:
+        path: "{{ tomcat_dir }}"
+        state: directory
+        mode: '0755'
+

@@ -1,0 +1,63 @@
+---
+- name: Configure all AWS Linux VMs
+  hosts: azure_vms  # Change this to match your inventory group name if different
+  become: yes
+  tasks:
+    - name: Update the yum cache
+      yum:
+        name: '*'
+        state: latest
+        update_cache: yes
+
+    - name: Install Java (required for Maven and Tomcat)
+      yum:
+        name: java-17-amazon-corretto
+        state: present
+
+    - name: Install Maven
+      yum:
+        name: maven
+        state: present
+
+    - name: Remove existing Maven project directory if it exists
+      file:
+        path: /tmp/sample-webapp
+        state: absent
+
+    - name: Create a directory for the Maven project
+      file:
+        path: /tmp/sample-webapp
+        state: directory
+
+    - name: Create a basic Maven project
+      shell: |
+        mvn archetype:generate \
+          -DgroupId=com.example \
+          -DartifactId=sample-webapp \
+          -DarchetypeArtifactId=maven-archetype-webapp \
+          -DinteractiveMode=false \
+          -DbatchMode
+      args:
+        chdir: /tmp
+
+    - name: Package the web application as a .war file
+      shell: mvn package
+      args:
+        chdir: /tmp/sample-webapp
+
+    - name: Deploy the .war file to Tomcat
+      copy:
+        src: /tmp/sample-webapp/target/sample-webapp.war
+        dest: /tmp/tomcat/webapps/
+
+    - name: Restart Tomcat to deploy the application
+      systemd:
+        name: tomcat
+        state: restarted
+        enabled: yes
+
+    - name: Clean up Maven project files (optional)
+      file:
+        path: /tmp/sample-webapp
+        state: absent
+

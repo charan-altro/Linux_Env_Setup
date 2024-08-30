@@ -1,0 +1,89 @@
+---
+- name: Build and deploy Java web application as a service on Kali Linux or other Linux VMs
+  hosts: azure_vms  # Change this to match your inventory group name if different
+  become: yes
+  vars:
+    repo_url: https://github.com/spring-projects/spring-petclinic.git  # URL of the test project
+    app_dir: /opt/app/web_app/  # Directory where the application will be cloned and built
+    jar_file: spring-petclinic-3.3.0-SNAPSHOT.jar  # JAR file name
+    service_name: spring-petclinic  # Systemd service name
+    server_port: 8082  # Custom port for running the app
+# export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+  tasks:
+    - name: Ensure required packages are installed (Git, Maven, Java)
+      apt:
+        name:
+          - git
+          - maven
+          - openjdk-17-jdk
+        state: present
+        update_cache: yes
+
+    - name: Create the application directory
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Clean up the existing directory if it exists
+      file:
+        path: "{{ app_dir }}"
+        state: absent
+
+    - name: Clone the Java web application repository
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ app_dir }}"
+        version: main
+
+    - name: Build the Java web application with Maven (clean install)
+      ansible.builtin.shell: mvn clean install -T1C | tee /opt/maven_build.log
+      args:
+        chdir: "{{ app_dir }}"
+
+    - name: Find the .jar file in the target directory
+      find:
+        paths: "{{ app_dir }}/target"
+        patterns: "*.jar"
+        recurse: yes
+      register: jar_file_result
+
+    - name: Fail if no .jar file is found
+      fail:
+        msg: "No .jar file found in the target directory."
+      when: jar_file_result.matched == 0
+
+    - name: Copy the .jar file to a stable location
+      copy:
+        src: "{{ jar_file_result.files[0].path }}"
+        dest: "/opt/app/{{ jar_file }}"
+
+    - name: Create the systemd service for the Java application
+      copy:
+        content: |
+          [Unit]
+          Description=Spring Boot Application - PetClinic
+          After=network.target
+
+          [Service]
+          User=root
+          ExecStart=/usr/bin/java -jar /opt/app/{{ jar_file }} --server.port={{ server_port }}
+          SuccessExitStatus=143
+          Restart=on-failure
+          RestartSec=10
+
+          [Install]
+          WantedBy=multi-user.target
+        dest: /etc/systemd/system/{{ service_name }}.service
+        mode: '0644'
+
+    - name: Reload systemd to register the new service
+      systemd:
+        daemon_reload: yes
+
+    - name: Start the Java application service
+      systemd:
+        name: "{{ service_name }}"
+        state: started
+        enabled: yes
+

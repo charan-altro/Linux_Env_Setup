@@ -1,0 +1,118 @@
+---
+- name: Build and deploy Java web application
+  hosts: azure_vms  # Change this to match your inventory group name if different
+  become: yes
+  vars:
+    tomcat_dir: /opt/tomcat/webapps  # Adjust the path to your Tomcat webapps directory
+    war_name: Spring_web_test.war  # Name of the WAR file to be deployed
+    repo_url: https://github.com/charan-altro/Spring_web_test.git  # URL of the test project
+    app_dir: /opt/app/Spring_web_test/Spring_web_test  # Directory where the application will be cloned and built
+
+  tasks:
+    - name: Check the Linux distribution
+      command: uname -a
+      register: uname_output
+
+    - name: Set Java package name based on distribution
+      set_fact:
+        java_package: "{{ 'java-17-amazon-corretto' if 'amzn' in uname_output.stdout else 'openjdk-17-jdk' }}"
+
+    - name: Ensure required packages are installed
+      package:
+        name: 
+          - git
+          - maven
+          - "{{ java_package }}"
+        state: present
+
+    - name: Remove all older files from Tomcat webapps directory
+      file:
+        path: "{{ tomcat_dir }}"
+        state: absent
+      notify:
+        - Create webapps directory
+
+    - name: Create the webapps directory
+      file:
+        path: "{{ tomcat_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Create the application directory
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Mark the application directory as safe for Git
+      command: git config --global --add safe.directory "{{ app_dir }}"
+
+    - name: Clone the Java web application repository
+      git:
+        repo: "{{ repo_url }}"
+        dest: "/opt/app/Spring_web_test"
+        version: main
+
+    - name: Check if pom.xml file exists
+      stat:
+        path: "{{ app_dir }}/pom.xml"
+      register: pom_check
+
+    - name: Fail if pom.xml file is not found
+      fail:
+        msg: "pom.xml not found in {{ app_dir }}. Please check the repository structure."
+      when: not pom_check.stat.exists
+
+    - name: Build the Java web application with Maven (clean install)
+      shell: mvn clean install -T1C | tee /opt/maven_build.log
+      args:
+        chdir: "{{ app_dir }}"
+
+    - name: Find the build directory (target)
+      find:
+        paths: "{{ app_dir }}"
+        patterns: "target"
+        file_type: directory
+        recurse: yes
+      register: build_dir
+
+    - name: Fail if no build directory found
+      fail:
+        msg: "Build directory not found."
+      when: build_dir.matched == 0
+
+    - name: Find the WAR file
+      find:
+        paths: "{{ build_dir.files[0].path }}"
+        patterns: "*.war"
+      register: found_files
+
+    - name: Fail if no WAR file found
+      fail:
+        msg: "WAR file not found."
+      when: found_files.matched == 0
+
+    - name: Copy the WAR file to the Tomcat webapps directory
+      copy:
+        src: "{{ item.path }}"
+        dest: "{{ tomcat_dir }}/{{ war_name }}"
+        remote_src: yes
+      with_items: "{{ found_files.files }}"
+
+    - name: Stop Tomcat
+      systemd:
+        name: tomcat
+        state: stopped
+
+    - name: Start Tomcat
+      systemd:
+        name: tomcat
+        state: started
+
+  handlers:
+    - name: Create webapps directory
+      file:
+        path: "{{ tomcat_dir }}"
+        state: directory
+        mode: '0755'
+

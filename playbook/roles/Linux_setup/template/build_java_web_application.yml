@@ -1,0 +1,79 @@
+---
+- name: Build and deploy Java web application on Kali Linux or other Linux VMs
+  hosts: localhost  # Change this to match your inventory group name if different
+  become: yes
+  vars:
+    repo_url: https://github.com/spring-projects/spring-petclinic.git   # URL of the test project
+    app_dir: /opt/app/web_app/  # Directory where the application will be cloned and built
+
+  tasks:
+    - name: Check the Linux distribution
+      ansible.builtin.command: uname -a
+      register: uname_output
+
+    - name: Set Java package name based on distribution
+      set_fact:
+        java_package: "{{ 'openjdk-17-jdk' if 'Linux' in uname_output.stdout else 'openjdk-17-jdk' }}"  # Fixed for all Linux distributions
+
+    - name: Ensure required packages are installed (Git, Maven, Java)
+      apt:
+        name:
+          - git
+          - maven
+          - "{{ java_package }}"
+        state: present
+        update_cache: yes
+
+    - name: Create the application directory
+      file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: Clean up the existing directory if it exists
+      file:
+        path: "{{ app_dir }}"
+        state: absent
+
+    - name: Clone the Java web application repository
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ app_dir }}"
+        version: main
+
+    - name: Check if pom.xml file exists
+      stat:
+        path: "{{ app_dir }}/pom.xml"
+      register: pom_check
+
+    - name: Fail if pom.xml file is not found
+      fail:
+        msg: "pom.xml not found in {{ app_dir }}. Please check the repository structure."
+      when: not pom_check.stat.exists
+
+    - name: Build the Java web application with Maven (clean install)
+      ansible.builtin.shell: mvn clean install -T1C | tee /opt/maven_build.log
+      args:
+        chdir: "{{ app_dir }}"
+
+    - name: Find the .war file in the target directory
+      find:
+        paths: "{{ app_dir }}/target"
+        patterns: "*.war"
+        recurse: yes
+      register: war_file
+
+    - name: Fail if .war file not found
+      fail:
+        msg: "No .war file found in the target directory."
+      when: war_file.matched == 0
+
+    - name: Copy the .war file to Tomcat webapps directory
+      copy:
+        src: "{{ war_file.files[0].path }}"
+        dest: /opt/tomcat/webapps/
+
+    - name: Restart Tomcat to deploy the application
+      systemd:
+        name: tomcat
+        state: restarted
