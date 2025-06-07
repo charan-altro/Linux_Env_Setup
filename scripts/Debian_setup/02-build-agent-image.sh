@@ -13,7 +13,6 @@ FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Set DNS to avoid temporary resolving failures
 RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf
 
 RUN apt-get update && \

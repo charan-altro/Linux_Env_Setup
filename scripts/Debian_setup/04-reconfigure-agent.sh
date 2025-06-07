@@ -20,3 +20,8 @@ fi
 docker exec -it $CONTAINER_NAME bash -c "cd agent && ./config.sh remove --unattended --auth pat --token \"$AZP_TOKEN\""
 docker restart $CONTAINER_NAME
 echo "✅ Agent reconfigured and restarted."
+
+if [[ "$MODE" == "kind" ]]; then
+  echo "ℹ️ For Kubernetes, reconfigure by editing and reapplying the deployment YAML."
+  exit 0
+fi
