@@ -3,12 +3,18 @@
 set -e
 
 # === Required Configuration ===
-AZP_URL="https://dev.azure.com/AzureDevops971/"     # Replace this
-AZP_POOL="windowssubsystem"                           # Replace if needed
-AZP_TOKEN="modify"                         # Replace this
-AZP_AGENT_NAME="debian-docker-agent"         # Optional
+AZP_URL="https://dev.azure.com/AzureDevops971/"     # Replace with your Azure DevOps organization URL
+AZP_POOL="windowssubsystem"                         # Replace with your agent pool name
+AZP_TOKEN="modify"                                  # Replace with your Azure DevOps PAT
+AZP_AGENT_NAME="debian-docker-agent"                # Optional: customize agent name
 IMAGE_NAME="azure-devops-agent:custom"
 CONTAINER_NAME="azdo-agent"
+
+# Validate required variables
+if [[ -z "$AZP_URL" || -z "$AZP_POOL" || -z "$AZP_TOKEN" ]]; then
+  echo "❌ AZP_URL, AZP_POOL, and AZP_TOKEN must be set."
+  exit 1
+fi
 
 # Remove existing container if exists
 docker rm -f $CONTAINER_NAME 2>/dev/null || true
