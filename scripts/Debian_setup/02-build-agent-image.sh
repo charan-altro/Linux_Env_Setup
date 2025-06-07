@@ -58,10 +58,7 @@ cd agent
   --acceptTeeEula \\
   --replace
 
-./svc.sh install
-./svc.sh start
-
-tail -f /dev/null
+./run.sh
 EOF
 
 chmod +x start.sh
