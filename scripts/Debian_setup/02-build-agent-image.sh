@@ -63,3 +63,25 @@ EOF
 # Build Docker image
 docker build -t $IMAGE_NAME .
 echo "✅ Docker image built: $IMAGE_NAME"
+# ...existing code...dockerfile
+cat <<EOF > Dockerfile
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Set DNS to avoid temporary resolving failures
+RUN echo "nameserver 8.8.8.8" > /etc/resolv.conf
+
+RUN apt-get update && \
+    apt-get install -y curl jq git sudo libcurl4-openssl-dev libicu-dev libkrb5-dev libssl-dev unzip && \
+    apt-get clean
+
+WORKDIR /azp
+
+COPY start.sh .
+
+RUN chmod +x start.sh
+
+ENTRYPOINT ["./start.sh"]
+EOF
+# ...existing code...
